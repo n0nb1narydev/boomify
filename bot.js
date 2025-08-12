@@ -19,6 +19,30 @@ if (!process.env.BOT_TOKEN || !process.env.CLIENT_ID) {
     process.exit(1);
 }
 
+// Start web server immediately for Render
+const app = express();
+const PORT = process.env.PORT || 10000;
+
+let botStatus = 'starting';
+let botUser = null;
+
+app.get('/', (req, res) => {
+    res.send(`Boomhauer Bot is ${botStatus}, mmm-hmm`);
+});
+
+app.get('/health', (req, res) => {
+    const isHealthy = botStatus === 'online';
+    res.status(isHealthy ? 200 : 503).json({ 
+        status: botStatus,
+        bot: botUser ? botUser.tag : 'Not logged in'
+    });
+});
+
+app.listen(PORT, () => {
+    console.log(`🌐 Web server running on port ${PORT}`);
+});
+
+// Discord client setup
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -29,7 +53,7 @@ const client = new Client({
     partials: ['CHANNEL']
 });
 
-// Your boomhauerify function here...
+// Your boomhauerify function
 function boomhauerify(text) {
     const fillers = [
         "man I tell ya what",
@@ -70,10 +94,13 @@ function boomhauerify(text) {
 client.on('ready', () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
     console.log(`✅ Bot is in ${client.guilds.cache.size} servers`);
+    botStatus = 'online';
+    botUser = client.user;
 });
 
 client.on('error', error => {
     console.error('❌ Discord client error:', error);
+    botStatus = 'error';
 });
 
 client.on('interactionCreate', async interaction => {
@@ -137,12 +164,12 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// Start everything
-async function startBot() {
+// Start Discord bot with timeout handling
+async function startDiscordBot() {
     try {
-        console.log('🚀 Starting bot...');
+        console.log('🚀 Starting Discord bot...');
         
-        // Register commands
+        // Register commands with timeout
         const commands = [
             new ContextMenuCommandBuilder()
                 .setName('Boomify')
@@ -158,48 +185,40 @@ async function startBot() {
         const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
         
         console.log('📝 Registering commands...');
-        await rest.put(
-            Routes.applicationCommands(process.env.CLIENT_ID),
-            { body: commands }
+        
+        // Add timeout to command registration
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Command registration timeout after 30s')), 30000)
         );
-        console.log('✅ Commands registered!');
+        
+        try {
+            await Promise.race([
+                rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands }),
+                timeoutPromise
+            ]);
+            console.log('✅ Commands registered!');
+        } catch (error) {
+            console.error('❌ Command registration failed:', error.message);
+            botStatus = 'commands_failed';
+            // Continue anyway - commands might already be registered
+        }
         
         // Login to Discord
         console.log('🔐 Logging in to Discord...');
         await client.login(process.env.BOT_TOKEN);
         
-        // Start web server AFTER successful login
-        const app = express();
-        const PORT = process.env.PORT || 10000;
-
-        app.get('/', (req, res) => {
-            res.send(`Boomhauer Bot is ${client.user ? 'online' : 'offline'}, mmm-hmm`);
-        });
-
-        app.get('/health', (req, res) => {
-            const status = client.user ? 'healthy' : 'unhealthy';
-            res.status(client.user ? 200 : 503).json({ 
-                status,
-                bot: client.user ? client.user.tag : 'Not logged in'
-            });
-        });
-
-        app.listen(PORT, () => {
-            console.log(`🌐 Web server running on port ${PORT}`);
-        });
-        
     } catch (error) {
-        console.error('❌ Failed to start bot:', error);
-        console.error('Error name:', error.name);
-        console.error('Error message:', error.message);
-        
-        // Exit so Render will restart
-        process.exit(1);
+        console.error('❌ Failed to start Discord bot:', error);
+        console.error('Error details:', error.message);
+        botStatus = 'failed';
+        // Don't exit - keep web server running
     }
 }
 
-// Start the bot
-startBot();
+// Start Discord bot after a short delay to ensure web server is up
+setTimeout(() => {
+    startDiscordBot();
+}, 1000);
 
 // Graceful shutdown
 process.on('SIGTERM', () => {

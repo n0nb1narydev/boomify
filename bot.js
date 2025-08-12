@@ -9,34 +9,15 @@ const {
 const express = require('express');
 require('dotenv').config({ path: '/etc/secrets/.env' });
 
-// Add debugging right after to confirm it's loading:
+// Environment check
 console.log('Environment check:');
 console.log('BOT_TOKEN exists:', !!process.env.BOT_TOKEN);
 console.log('CLIENT_ID exists:', !!process.env.CLIENT_ID);
 
 if (!process.env.BOT_TOKEN || !process.env.CLIENT_ID) {
     console.error('Missing required environment variables!');
-    console.error('BOT_TOKEN:', process.env.BOT_TOKEN ? 'Found' : 'Missing');
-    console.error('CLIENT_ID:', process.env.CLIENT_ID ? 'Found' : 'Missing');
     process.exit(1);
 }
-
-
-// Keep-alive server
-const app = express();
-const PORT = process.env.PORT || 10000;
-
-app.get('/', (req, res) => {
-    res.send('Boomhauer Bot is running, mmm-hmm');
-});
-
-app.get('/health', (req, res) => {
-    res.status(200).send('OK');
-});
-
-app.listen(PORT, () => {
-    console.log(`Keep-alive server running on port ${PORT}`);
-});
 
 const client = new Client({
     intents: [
@@ -48,6 +29,7 @@ const client = new Client({
     partials: ['CHANNEL']
 });
 
+// Your boomhauerify function here...
 function boomhauerify(text) {
     const fillers = [
         "man I tell ya what",
@@ -69,7 +51,7 @@ function boomhauerify(text) {
         "tell ya",
     ];
 
-    const endings = ["man", "mmm-hmm"];
+    const endings = [", man", "mmm-hmm"];
 
     const words = text.split(" ");
     let output = [];
@@ -84,73 +66,18 @@ function boomhauerify(text) {
     return output.join(" ");
 }
 
-// Register commands
-const commands = [
-    new ContextMenuCommandBuilder()
-        .setName('Boomify')
-        .setType(ApplicationCommandType.Message)
-        .setContexts([0, 1, 2]),
-
-    new ContextMenuCommandBuilder()
-        .setName('Boomify Last Message')
-        .setType(ApplicationCommandType.User)
-        .setContexts([0, 1, 2])
-].map(command => command.toJSON());
-
-const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
-
-// Register commands and login with better error handling
-(async () => {
-    try {
-        console.log('Registering context menu commands...');
-        console.log('Using CLIENT_ID:', process.env.CLIENT_ID);
-        
-        // Add a timeout for the REST call
-        const registerPromise = rest.put(
-            Routes.applicationCommands(process.env.CLIENT_ID),
-            { body: commands }
-        );
-        
-        // Set a 10 second timeout
-        const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Command registration timeout')), 10000)
-        );
-        
-        await Promise.race([registerPromise, timeoutPromise]);
-        console.log('Context menu commands registered successfully.');
-        
-        // Login to Discord with timeout
-        console.log('Attempting to login to Discord...');
-        const loginPromise = client.login(process.env.BOT_TOKEN);
-        const loginTimeout = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Discord login timeout')), 10000)
-        );
-        
-        await Promise.race([loginPromise, loginTimeout]);
-        console.log('Successfully logged in to Discord!');
-        
-    } catch (error) {
-        console.error('Error during startup:', error);
-        console.error('Error details:', error.message);
-        console.error('Stack trace:', error.stack);
-        
-        // Keep the web server running even if Discord fails
-        console.log('Bot failed to start, but keeping web server alive');
-    }
-})();
-
+// Bot event handlers
 client.on('ready', () => {
-    console.log(`Logged in as ${client.user.tag}`);
-    console.log(`Bot is in ${client.guilds.cache.size} servers`);
+    console.log(`✅ Logged in as ${client.user.tag}`);
+    console.log(`✅ Bot is in ${client.guilds.cache.size} servers`);
 });
 
 client.on('error', error => {
-    console.error('Discord client error:', error);
+    console.error('❌ Discord client error:', error);
 });
 
 client.on('interactionCreate', async interaction => {
     try {
-        // Message context menu
         if (interaction.isMessageContextMenuCommand() && interaction.commandName === 'Boomify') {
             await interaction.deferReply();
             
@@ -178,24 +105,21 @@ client.on('interactionCreate', async interaction => {
             });
         }
 
-        // User context menu
         if (interaction.isUserContextMenuCommand() && interaction.commandName === 'Boomify Last Message') {
             await interaction.deferReply();
             
             const targetUser = interaction.targetUser;
-
             const messages = await interaction.channel.messages.fetch({ limit: 50 });
             const lastMessage = messages.find(m => m.author.id === targetUser.id && !m.author.bot);
 
             if (!lastMessage) {
                 return interaction.editReply({
-                    content: `${targetUser} hasn't said anything I can Boomify here, mmm-hmm.`,
-                    ephemeral: true
+                    content: `${targetUser} hasn't said anything I can Boomify here, mmm-hmm.`
                 });
             }
 
             const boomed = boomhauerify(lastMessage.content);
-            const fullMessage = `${boomed}`;
+            const fullMessage = `${targetUser} ${boomed}`;
             
             if (fullMessage.length > 2000) {
                 return interaction.editReply({
@@ -210,18 +134,76 @@ client.on('interactionCreate', async interaction => {
         }
     } catch (error) {
         console.error('Error handling interaction:', error);
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ 
-                content: 'Man I tell ya what, somethin\' went wrong there, mmm-hmm.', 
-                ephemeral: true 
-            });
-        }
     }
 });
 
-// Handle process termination
+// Start everything
+async function startBot() {
+    try {
+        console.log('🚀 Starting bot...');
+        
+        // Register commands
+        const commands = [
+            new ContextMenuCommandBuilder()
+                .setName('Boomify')
+                .setType(ApplicationCommandType.Message)
+                .setContexts([0, 1, 2]),
+
+            new ContextMenuCommandBuilder()
+                .setName('Boomify Last Message')
+                .setType(ApplicationCommandType.User)
+                .setContexts([0, 1, 2])
+        ].map(command => command.toJSON());
+
+        const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
+        
+        console.log('📝 Registering commands...');
+        await rest.put(
+            Routes.applicationCommands(process.env.CLIENT_ID),
+            { body: commands }
+        );
+        console.log('✅ Commands registered!');
+        
+        // Login to Discord
+        console.log('🔐 Logging in to Discord...');
+        await client.login(process.env.BOT_TOKEN);
+        
+        // Start web server AFTER successful login
+        const app = express();
+        const PORT = process.env.PORT || 10000;
+
+        app.get('/', (req, res) => {
+            res.send(`Boomhauer Bot is ${client.user ? 'online' : 'offline'}, mmm-hmm`);
+        });
+
+        app.get('/health', (req, res) => {
+            const status = client.user ? 'healthy' : 'unhealthy';
+            res.status(client.user ? 200 : 503).json({ 
+                status,
+                bot: client.user ? client.user.tag : 'Not logged in'
+            });
+        });
+
+        app.listen(PORT, () => {
+            console.log(`🌐 Web server running on port ${PORT}`);
+        });
+        
+    } catch (error) {
+        console.error('❌ Failed to start bot:', error);
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
+        
+        // Exit so Render will restart
+        process.exit(1);
+    }
+}
+
+// Start the bot
+startBot();
+
+// Graceful shutdown
 process.on('SIGTERM', () => {
-    console.log('SIGTERM received, shutting down gracefully...');
+    console.log('👋 SIGTERM received, shutting down...');
     client.destroy();
     process.exit(0);
 });

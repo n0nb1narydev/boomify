@@ -102,35 +102,31 @@ const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
     }
 })();
 
-client.on('ready', () => {
-    console.log(`Logged in as ${client.user.tag}`);
-});
-
 client.on('interactionCreate', async interaction => {
     // Message context menu
     if (interaction.isMessageContextMenuCommand() && interaction.commandName === 'Boomify') {
+        // Defer the reply immediately
+        await interaction.deferReply();
+        
         const message = interaction.targetMessage;
         const originalText = message.content;
 
         if (!originalText || originalText.trim().length === 0) {
-            return interaction.reply({
-                content: "That message doesn't have any text to Boomify, mmm-hmm.",
-                ephemeral: true
+            return interaction.editReply({
+                content: "That message doesn't have any text to Boomify, mmm-hmm."
             });
         }
 
         const boomed = boomhauerify(originalText);
         const fullMessage = `${message.author} ${boomed}`;
         
-        // Check if message is too long (Discord limit is 2000 characters)
         if (fullMessage.length > 2000) {
-            return interaction.reply({
-                content: "Man I tell ya what, that dang ol' message too long, talkin' 'bout War and Peace or somethin', can't handle all them words, mmm-hmm.",
-                ephemeral: true
+            return interaction.editReply({
+                content: "Man I tell ya what, that dang ol' message too long, talkin' 'bout War and Peace or somethin', can't handle all them words, mmm-hmm."
             });
         }
 
-        return interaction.reply({
+        return interaction.editReply({
             content: fullMessage,
             allowedMentions: { users: [message.author.id] }
         });
@@ -138,31 +134,30 @@ client.on('interactionCreate', async interaction => {
 
     // User context menu
     if (interaction.isUserContextMenuCommand() && interaction.commandName === 'Boomify Last Message') {
+        // Defer the reply immediately
+        await interaction.deferReply();
+        
         const targetUser = interaction.targetUser;
 
-        // Fetch recent messages in the DM or guild channel
         const messages = await interaction.channel.messages.fetch({ limit: 50 });
         const lastMessage = messages.find(m => m.author.id === targetUser.id && !m.author.bot);
 
         if (!lastMessage) {
-            return interaction.reply({
-                content: `${targetUser} hasn't said anything I can Boomify here, mmm-hmm.`,
-                ephemeral: true
+            return interaction.editReply({
+                content: `${targetUser} hasn't said anything I can Boomify here, mmm-hmm.`
             });
         }
 
         const boomed = boomhauerify(lastMessage.content);
         const fullMessage = `${targetUser} ${boomed}`;
         
-        // Check if message is too long
         if (fullMessage.length > 2000) {
-            return interaction.reply({
-                content: "Man I tell ya what, that dang ol' message too long, talkin' 'bout War and Peace or somethin', can't handle all them words, mmm-hmm.",
-                ephemeral: true
+            return interaction.editReply({
+                content: "Man I tell ya what, that dang ol' message too long, talkin' 'bout War and Peace or somethin', can't handle all them words, mmm-hmm."
             });
         }
 
-        return interaction.reply({
+        return interaction.editReply({
             content: fullMessage,
             allowedMentions: { users: [targetUser.id] }
         });

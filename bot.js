@@ -25,6 +25,7 @@ const PORT = process.env.PORT || 10000;
 
 let botStatus = 'starting';
 let botUser = null;
+let lastError = null;
 
 app.get('/', (req, res) => {
     res.send(`Boomhauer Bot is ${botStatus}, mmm-hmm`);
@@ -34,7 +35,9 @@ app.get('/health', (req, res) => {
     const isHealthy = botStatus === 'online';
     res.status(isHealthy ? 200 : 503).json({ 
         status: botStatus,
-        bot: botUser ? botUser.tag : 'Not logged in'
+        bot: botUser ? botUser.tag : 'Not logged in',
+        error: lastError,
+        timestamp: new Date().toISOString()
     });
 });
 
@@ -75,7 +78,7 @@ function boomhauerify(text) {
         "tell ya",
     ];
 
-    const endings = [", man", "mmm-hmm"];
+    const endings = ["man", "mmm-hmm"];
 
     const words = text.split(" ");
     let output = [];
@@ -101,6 +104,13 @@ client.on('ready', () => {
 client.on('error', error => {
     console.error('❌ Discord client error:', error);
     botStatus = 'error';
+    lastError = error.message;
+});
+
+// Add debug logging
+client.on('debug', info => {
+    if (info.includes('token') || info.includes('heartbeat')) return; // Skip sensitive/spammy logs
+    console.log('🔍 Debug:', info);
 });
 
 client.on('interactionCreate', async interaction => {
@@ -146,7 +156,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             const boomed = boomhauerify(lastMessage.content);
-            const fullMessage = `${targetUser} ${boomed}`;
+            const fullMessage = `${boomed}`;
             
             if (fullMessage.length > 2000) {
                 return interaction.editReply({
@@ -164,61 +174,62 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// Start Discord bot with timeout handling
+// Start Discord bot
 async function startDiscordBot() {
     try {
         console.log('🚀 Starting Discord bot...');
+        botStatus = 'logging_in';
         
-        // Register commands with timeout
-        const commands = [
-            new ContextMenuCommandBuilder()
-                .setName('Boomify')
-                .setType(ApplicationCommandType.Message)
-                .setContexts([0, 1, 2]),
-
-            new ContextMenuCommandBuilder()
-                .setName('Boomify Last Message')
-                .setType(ApplicationCommandType.User)
-                .setContexts([0, 1, 2])
-        ].map(command => command.toJSON());
-
-        const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
+        // Skip command registration for now - just try to login
+        console.log('🔐 Attempting to login to Discord...');
         
-        console.log('📝 Registering commands...');
-        
-        // Add timeout to command registration
-        const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Command registration timeout after 30s')), 30000)
-        );
-        
-        try {
-            await Promise.race([
-                rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands }),
-                timeoutPromise
-            ]);
-            console.log('✅ Commands registered!');
-        } catch (error) {
-            console.error('❌ Command registration failed:', error.message);
-            botStatus = 'commands_failed';
-            // Continue anyway - commands might already be registered
-        }
-        
-        // Login to Discord
-        console.log('🔐 Logging in to Discord...');
         await client.login(process.env.BOT_TOKEN);
+        console.log('✅ Login command sent');
+        
+        // Register commands after successful login
+        setTimeout(async () => {
+            if (botStatus === 'online') {
+                try {
+                    console.log('📝 Attempting command registration...');
+                    const commands = [
+                        new ContextMenuCommandBuilder()
+                            .setName('Boomify')
+                            .setType(ApplicationCommandType.Message)
+                            .setContexts([0, 1, 2]),
+
+                        new ContextMenuCommandBuilder()
+                            .setName('Boomify Last Message')
+                            .setType(ApplicationCommandType.User)
+                            .setContexts([0, 1, 2])
+                    ].map(command => command.toJSON());
+
+                    const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
+                    
+                    await rest.put(
+                        Routes.applicationCommands(process.env.CLIENT_ID),
+                        { body: commands }
+                    );
+                    console.log('✅ Commands registered!');
+                } catch (error) {
+                    console.error('❌ Command registration failed:', error.message);
+                    // Bot is still online, just commands failed to update
+                }
+            }
+        }, 5000); // Wait 5 seconds after login
         
     } catch (error) {
         console.error('❌ Failed to start Discord bot:', error);
-        console.error('Error details:', error.message);
-        botStatus = 'failed';
-        // Don't exit - keep web server running
+        console.error('Error type:', error.constructor.name);
+        console.error('Error code:', error.code);
+        botStatus = 'login_failed';
+        lastError = `${error.constructor.name}: ${error.message}`;
     }
 }
 
-// Start Discord bot after a short delay to ensure web server is up
+// Start Discord bot after a short delay
 setTimeout(() => {
     startDiscordBot();
-}, 1000);
+}, 2000);
 
 // Graceful shutdown
 process.on('SIGTERM', () => {

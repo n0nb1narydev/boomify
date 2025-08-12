@@ -99,24 +99,43 @@ const commands = [
 
 const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
 
-// Register commands and login
+// Register commands and login with better error handling
 (async () => {
     try {
         console.log('Registering context menu commands...');
-        await rest.put(
+        console.log('Using CLIENT_ID:', process.env.CLIENT_ID);
+        
+        // Add a timeout for the REST call
+        const registerPromise = rest.put(
             Routes.applicationCommands(process.env.CLIENT_ID),
             { body: commands }
         );
+        
+        // Set a 10 second timeout
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Command registration timeout')), 10000)
+        );
+        
+        await Promise.race([registerPromise, timeoutPromise]);
         console.log('Context menu commands registered successfully.');
         
-        // Login to Discord
-        console.log('Logging in to Discord...');
-        await client.login(process.env.BOT_TOKEN);
+        // Login to Discord with timeout
+        console.log('Attempting to login to Discord...');
+        const loginPromise = client.login(process.env.BOT_TOKEN);
+        const loginTimeout = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Discord login timeout')), 10000)
+        );
+        
+        await Promise.race([loginPromise, loginTimeout]);
         console.log('Successfully logged in to Discord!');
         
     } catch (error) {
         console.error('Error during startup:', error);
-        process.exit(1);
+        console.error('Error details:', error.message);
+        console.error('Stack trace:', error.stack);
+        
+        // Keep the web server running even if Discord fails
+        console.log('Bot failed to start, but keeping web server alive');
     }
 })();
 

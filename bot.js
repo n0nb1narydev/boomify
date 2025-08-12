@@ -7,7 +7,20 @@ const {
     ApplicationCommandType
 } = require('discord.js');
 const express = require('express');
-require('dotenv').config();
+require('dotenv').config({ path: '/etc/secrets/.env' });
+
+// Add debugging right after to confirm it's loading:
+console.log('Environment check:');
+console.log('BOT_TOKEN exists:', !!process.env.BOT_TOKEN);
+console.log('CLIENT_ID exists:', !!process.env.CLIENT_ID);
+
+if (!process.env.BOT_TOKEN || !process.env.CLIENT_ID) {
+    console.error('Missing required environment variables!');
+    console.error('BOT_TOKEN:', process.env.BOT_TOKEN ? 'Found' : 'Missing');
+    console.error('CLIENT_ID:', process.env.CLIENT_ID ? 'Found' : 'Missing');
+    process.exit(1);
+}
+
 
 // Keep-alive server
 const app = express();

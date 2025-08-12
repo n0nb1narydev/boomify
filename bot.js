@@ -93,12 +93,12 @@ const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
     try {
         console.log('Registering context menu commands...');
         await rest.put(
-            Routes.applicationCommands(process.env.CLIENT_ID), // Global
+            Routes.applicationCommands(process.env.CLIENT_ID),
             { body: commands }
         );
-        console.log('Context menu commands registered.');
+        console.log('Context menu commands registered successfully!');
     } catch (error) {
-        console.error(error);
+        console.error('Failed to register commands:', error);
     }
 })();
 
@@ -164,4 +164,6 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-client.login(process.env.BOT_TOKEN);
+client.login(process.env.BOT_TOKEN).catch(error => {
+    console.error('Failed to login:', error);
+});

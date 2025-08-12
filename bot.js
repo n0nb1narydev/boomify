@@ -57,7 +57,7 @@ function boomhauerify(text) {
         "tell ya",
     ];
 
-    const endings = [", man", "mmm-hmm"];
+    const endings = ["man", "mmm-hmm"];
 
     const words = text.split(" ");
     let output = [];
